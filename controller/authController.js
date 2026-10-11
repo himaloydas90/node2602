@@ -1,4 +1,5 @@
 const usermodel = require('../model/userModel');
+
 const authController =  async (req, res) => {
     const {
         username,
@@ -71,4 +72,28 @@ const authController =  async (req, res) => {
     }
 
 }
-module.exports = authController;
+const imageUpload = async (req, res) => {
+    try {
+        console.log(req.file); 
+
+        if (!req.file) {
+            return res.status(400).json({ error: "No image was uploaded!" });
+        }
+        const imageUrl = req.file.path;
+        res.status(200).json({
+            message: "Image uploaded successfully",
+            url: imageUrl
+        });
+    } catch (error) {
+        console.error("Upload Error:", error); 
+        res.status(500).json({ 
+            success: false,
+            message: "Image upload failed!", 
+            error: error.message 
+        });
+    }
+}
+module.exports = {
+    authController,
+    imageUpload
+}

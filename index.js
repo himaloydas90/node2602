@@ -11,6 +11,7 @@ const port = process.env.PORT || 3000;
 
 const DB_config = require('./config/config.js');
 DB_config();
+app.use('/uploads', express.static('uploads'));
 
 app.use(express.json());
 const routes = require('./route')
