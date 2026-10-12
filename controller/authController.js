@@ -1,17 +1,30 @@
 const usermodel = require('../model/userModel');
+// const bcrypt = require('bcrypt');
 
-const authController =  async (req, res) => {
+const registrationController = async (req, res) => {
     const {
         username,
         email,
-        password
+        password,
+        profileImage,
+        address,
+        phone,
+        gender,
+        dateOfBirth
     } = req.body
-     try {
+    
+    try {
 
         if (!username) {
             return res.status(400).json({
                 success: false,
                 message: "Username is required"
+            });
+        }
+        if (username.length < 4 || username.length > 20) {
+            return res.status(400).json({
+                success: false,
+                message: "Username must be between 4 and 20 characters long"
             });
         }
 
@@ -37,11 +50,57 @@ const authController =  async (req, res) => {
                 message: "Password is required"
             });
         }
+        const checks = [{
+                test: p => p.length >= 8,
+                msg: "Password must be at least 8 characters long"
+            },
+            {
+                test: p => /[A-Z]/.test(p),
+                msg: "Password must include an uppercase letter"
+            },
+            {
+                test: p => /[a-z]/.test(p),
+                msg: "Password must include a lowercase letter"
+            },
+            {
+                test: p => /\d/.test(p),
+                msg: "Password must include a number"
+            },
+            {
+                test: p => /[@$!%*?&]/.test(p),
+                msg: "Password must include a special character(@$!%*?&)"
+            }
+        ];
+
+
+        const failedCheck = checks.find(c => !c.test(password));
+
+        if (failedCheck) {
+            return res.status(400).json({
+                success: false,
+                message: failedCheck.msg
+            });
+        }
+        if (gender && !['male', 'female', 'other'].includes(gender)) {
+            return res.status(400).json({
+                success: false,
+                message: " Gender must be 'male', 'female', or 'other'"
+            });
+        }
+        
+ //   ==================== bcrypt password=======================      
+//         const saltRounds =10;
+//         const hashedPassword = await bcrypt.hash(password,saltRounds)
 
         const user = new usermodel({
             username: username,
             email: email,
-            password: password
+            password: password,
+            profileImage: profileImage || null,
+            address: address || null,
+            phone: phone || null,
+            gender: gender || null,
+            dateOfBirth: dateOfBirth || null
         });
 
         const existingUser = await usermodel.findOne({
@@ -56,6 +115,20 @@ const authController =  async (req, res) => {
         }
 
         await user.save();
+        // === === === === === === database save operation === === === === === === === === ==
+        //     const user = await usermodel.create({
+        //         username: username,
+        //         email: email,
+        //         password: password,
+        //         profileImage: profileImage || null,
+        //         address: address || null,
+        //         phone: phone || null,
+        //         gender: gender || null,
+        //         dateOfBirth: dateOfBirth || null
+        //     });
+        // await user.save();
+
+
 
         res.status(201).json({
             success: true,
@@ -64,6 +137,7 @@ const authController =  async (req, res) => {
         });
 
     } catch (error) {
+        console.error("Registration Error:", error);
         return res.status(500).json({
             success: false,
             message: "Error creating user",
@@ -74,10 +148,12 @@ const authController =  async (req, res) => {
 }
 const imageUpload = async (req, res) => {
     try {
-        console.log(req.file); 
+        console.log(req.file);
 
         if (!req.file) {
-            return res.status(400).json({ error: "No image was uploaded!" });
+            return res.status(400).json({
+                error: "No image was uploaded!"
+            });
         }
         const imageUrl = req.file.path;
         res.status(200).json({
@@ -85,15 +161,15 @@ const imageUpload = async (req, res) => {
             url: imageUrl
         });
     } catch (error) {
-        console.error("Upload Error:", error); 
-        res.status(500).json({ 
+        console.error("Upload Error:", error);
+        res.status(500).json({
             success: false,
-            message: "Image upload failed!", 
-            error: error.message 
+            message: "Image upload failed!",
+            error: error.message
         });
     }
 }
 module.exports = {
-    authController,
+    registrationController,
     imageUpload
 }

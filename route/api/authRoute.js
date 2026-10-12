@@ -1,11 +1,11 @@
 const express = require("express");
 const router = express.Router();
 const upload = require('../../middalware/fileUploads');
-const {authController,imageUpload} = require('../../controller/authController');
+const {registrationController,imageUpload} = require('../../controller/authController');
 router.get('/login', (req, res) => {
     res.send('Login route');
 });
-router.post('/register',authController);
+router.post('/register',registrationController);
 
 router.post('/image',upload.single('avatar'),imageUpload);
 
