@@ -1,175 +1,497 @@
-const usermodel = require('../model/userModel');
-// const bcrypt = require('bcrypt');
+const User = require('../model/userModel');
+const asyncHandler = require('../utils/asyncHandler');
+const {
+  generateAccessToken,
+  generateRefreshToken,
+  generateTemporaryToken,
+  verifyRefreshToken,
+  verifyTemporaryToken,
+  hashToken,
+} = require('../utils/tokenHelper');
+const {
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+} = require('../utils/sendEmail');
 
-const registrationController = async (req, res) => {
-    const {
-        username,
-        email,
-        password,
-        profileImage,
-        address,
-        phone,
-        gender,
-        dateOfBirth
-    } = req.body
-    
-    try {
+const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
-        if (!username) {
-            return res.status(400).json({
-                success: false,
-                message: "Username is required"
-            });
-        }
-        if (username.length < 4 || username.length > 20) {
-            return res.status(400).json({
-                success: false,
-                message: "Username must be between 4 and 20 characters long"
-            });
-        }
+const validatePassword = (password) => {
+  const checks = [
+    {
+      test: (p) => p.length >= 8,
+      msg: 'Password must be at least 8 characters long',
+    },
+    {
+      test: (p) => /[A-Z]/.test(p),
+      msg: 'Password must include an uppercase letter',
+    },
+    {
+      test: (p) => /[a-z]/.test(p),
+      msg: 'Password must include a lowercase letter',
+    },
+    {
+      test: (p) => /\d/.test(p),
+      msg: 'Password must include a number',
+    },
+    {
+      test: (p) => /[@$!%*?&]/.test(p),
+      msg: 'Password must include a special character (@$!%*?&)',
+    },
+  ];
 
-        if (!email) {
-            return res.status(400).json({
-                success: false,
-                message: "Email is required"
-            });
-        }
+  const failed = checks.find((c) => !c.test(password));
+  return failed ? failed.msg : null;
+};
 
-        const emailRegex = /^[a-zA-Z0-9.\_%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+const issueAuthTokens = async (user) => {
+  const payload = { userId: user._id.toString(), email: user.email };
 
-        if (!emailRegex.test(email.trim())) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid email format!"
-            });
-        }
+  const accessToken = generateAccessToken(payload);
+  const refreshToken = generateRefreshToken(payload);
 
-        if (!password) {
-            return res.status(400).json({
-                success: false,
-                message: "Password is required"
-            });
-        }
-        const checks = [{
-                test: p => p.length >= 8,
-                msg: "Password must be at least 8 characters long"
-            },
-            {
-                test: p => /[A-Z]/.test(p),
-                msg: "Password must include an uppercase letter"
-            },
-            {
-                test: p => /[a-z]/.test(p),
-                msg: "Password must include a lowercase letter"
-            },
-            {
-                test: p => /\d/.test(p),
-                msg: "Password must include a number"
-            },
-            {
-                test: p => /[@$!%*?&]/.test(p),
-                msg: "Password must include a special character(@$!%*?&)"
-            }
-        ];
+  user.refreshTokens.push({ token: hashToken(refreshToken) });
 
+  // Keep only the latest 5 refresh tokens (multi-device support with a sane limit)
+  if (user.refreshTokens.length > 5) {
+    user.refreshTokens = user.refreshTokens.slice(-5);
+  }
 
-        const failedCheck = checks.find(c => !c.test(password));
+  await user.save();
 
-        if (failedCheck) {
-            return res.status(400).json({
-                success: false,
-                message: failedCheck.msg
-            });
-        }
-        if (gender && !['male', 'female', 'other'].includes(gender)) {
-            return res.status(400).json({
-                success: false,
-                message: " Gender must be 'male', 'female', or 'other'"
-            });
-        }
-        
- //   ==================== bcrypt password=======================      
-//         const saltRounds =10;
-//         const hashedPassword = await bcrypt.hash(password,saltRounds)
+  return { accessToken, refreshToken };
+};
 
-        const user = new usermodel({
-            username: username,
-            email: email,
-            password: password,
-            profileImage: profileImage || null,
-            address: address || null,
-            phone: phone || null,
-            gender: gender || null,
-            dateOfBirth: dateOfBirth || null
-        });
+/**
+ * POST /auth/register
+ */
+const register = asyncHandler(async (req, res) => {
+  const {
+    username,
+    email,
+    password,
+    profileImage,
+    address,
+    phone,
+    gender,
+    dateOfBirth,
+  } = req.body;
 
-        const existingUser = await usermodel.findOne({
-            email
-        });
+  if (!username) {
+    return res.status(400).json({ success: false, message: 'Username is required' });
+  }
+  if (username.length < 4 || username.length > 20) {
+    return res.status(400).json({
+      success: false,
+      message: 'Username must be between 4 and 20 characters long',
+    });
+  }
 
-        if (existingUser) {
-            return res.status(409).json({
-                success: false,
-                message: "Email already registered!"
-            });
-        }
+  if (!email) {
+    return res.status(400).json({ success: false, message: 'Email is required' });
+  }
+  if (!EMAIL_REGEX.test(email.trim())) {
+    return res.status(400).json({ success: false, message: 'Invalid email format!' });
+  }
 
-        await user.save();
-        // === === === === === === database save operation === === === === === === === === ==
-        //     const user = await usermodel.create({
-        //         username: username,
-        //         email: email,
-        //         password: password,
-        //         profileImage: profileImage || null,
-        //         address: address || null,
-        //         phone: phone || null,
-        //         gender: gender || null,
-        //         dateOfBirth: dateOfBirth || null
-        //     });
-        // await user.save();
+  if (!password) {
+    return res.status(400).json({ success: false, message: 'Password is required' });
+  }
 
+  const passwordError = validatePassword(password);
+  if (passwordError) {
+    return res.status(400).json({ success: false, message: passwordError });
+  }
 
+  if (gender && !['male', 'female', 'other'].includes(gender)) {
+    return res.status(400).json({
+      success: false,
+      message: "Gender must be 'male', 'female', or 'other'",
+    });
+  }
 
-        res.status(201).json({
-            success: true,
-            message: "User registered successfully",
-            user: user
-        });
+  const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
+  if (existingUser) {
+    return res.status(409).json({
+      success: false,
+      message: 'Email already registered!',
+    });
+  }
 
-    } catch (error) {
-        console.error("Registration Error:", error);
-        return res.status(500).json({
-            success: false,
-            message: "Error creating user",
-            error: error.message
-        });
-    }
+  const user = await User.create({
+    username: username.trim(),
+    email: email.toLowerCase().trim(),
+    password,
+    ...(profileImage && { profileImage }),
+    ...(address && { address }),
+    ...(phone && { phone }),
+    ...(gender && { gender }),
+    ...(dateOfBirth && { dateOfBirth }),
+  });
 
-}
-const imageUpload = async (req, res) => {
-    try {
-        console.log(req.file);
+  const verificationToken = generateTemporaryToken(
+    { userId: user._id.toString(), email: user.email },
+    'email_verification'
+  );
 
-        if (!req.file) {
-            return res.status(400).json({
-                error: "No image was uploaded!"
-            });
-        }
-        const imageUrl = req.file.path;
-        res.status(200).json({
-            message: "Image uploaded successfully",
-            url: imageUrl
-        });
-    } catch (error) {
-        console.error("Upload Error:", error);
-        res.status(500).json({
-            success: false,
-            message: "Image upload failed!",
-            error: error.message
-        });
-    }
-}
+  try {
+    await sendVerificationEmail(user.email, verificationToken, user.username);
+  } catch (emailError) {
+    console.error('Verification email failed:', emailError.message);
+  }
+
+  return res.status(201).json({
+    success: true,
+    message:
+      'User registered successfully. Please check your email (including the spam folder) to verify your account.',
+    user: user.toSafeObject(),
+  });
+});
+
+/**
+ * POST /auth/login
+ */
+const login = asyncHandler(async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({
+      success: false,
+      message: 'Email and password are required',
+    });
+  }
+
+  const user = await User.findOne({ email: email.toLowerCase().trim() }).select(
+    '+password'
+  );
+
+  if (!user || !(await user.comparePassword(password))) {
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid email or password',
+    });
+  }
+
+  if (!user.isVerified) {
+    return res.status(403).json({
+      success: false,
+      message: 'Please verify your email before logging in.',
+    });
+  }
+
+  const tokens = await issueAuthTokens(user);
+
+  return res.status(200).json({
+    success: true,
+    message: 'Login successful',
+    user: user.toSafeObject(),
+    ...tokens,
+  });
+});
+
+/**
+ * POST /auth/refresh-token
+ */
+const refreshAccessToken = asyncHandler(async (req, res) => {
+  const { refreshToken } = req.body;
+
+  if (!refreshToken) {
+    return res.status(400).json({
+      success: false,
+      message: 'Refresh token is required',
+    });
+  }
+
+  let decoded;
+  try {
+    decoded = verifyRefreshToken(refreshToken);
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid or expired refresh token',
+    });
+  }
+
+  const hashed = hashToken(refreshToken);
+  const user = await User.findById(decoded.userId);
+
+  if (!user) {
+    return res.status(401).json({
+      success: false,
+      message: 'User not found',
+    });
+  }
+
+  const tokenExists = user.refreshTokens.some((entry) => entry.token === hashed);
+  if (!tokenExists) {
+    return res.status(401).json({
+      success: false,
+      message: 'Refresh token has been revoked',
+    });
+  }
+
+  // Rotate refresh token: invalidate the old one and issue a new pair
+  user.refreshTokens = user.refreshTokens.filter((entry) => entry.token !== hashed);
+  const tokens = await issueAuthTokens(user);
+
+  return res.status(200).json({
+    success: true,
+    message: 'Token refreshed successfully',
+    ...tokens,
+  });
+});
+
+/**
+ * POST /auth/logout
+ */
+const logout = asyncHandler(async (req, res) => {
+  const { refreshToken } = req.body;
+
+  if (!refreshToken) {
+    return res.status(400).json({
+      success: false,
+      message: 'Refresh token is required',
+    });
+  }
+
+  let decoded;
+  try {
+    decoded = verifyRefreshToken(refreshToken);
+  } catch (error) {
+    // Token already invalid/expired — treat logout as successful
+    return res.status(200).json({
+      success: true,
+      message: 'Logged out successfully',
+    });
+  }
+
+  const hashed = hashToken(refreshToken);
+  await User.findByIdAndUpdate(decoded.userId, {
+    $pull: { refreshTokens: { token: hashed } },
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: 'Logged out successfully',
+  });
+});
+
+/**
+ * GET/POST /auth/verify-email
+ */
+const verifyEmail = asyncHandler(async (req, res) => {
+  const token = req.body.token || req.query.token;
+
+  if (!token) {
+    return res.status(400).json({
+      success: false,
+      message: 'Verification token is required',
+    });
+  }
+
+  let decoded;
+  try {
+    decoded = verifyTemporaryToken(token, 'email_verification');
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid or expired verification token',
+    });
+  }
+
+  const user = await User.findById(decoded.userId);
+  if (!user) {
+    return res.status(404).json({
+      success: false,
+      message: 'User not found',
+    });
+  }
+
+  if (user.isVerified) {
+    return res.status(200).json({
+      success: true,
+      message: 'Email is already verified',
+    });
+  }
+
+  user.isVerified = true;
+  await user.save();
+
+  return res.status(200).json({
+    success: true,
+    message: 'Email verified successfully. You can now log in.',
+  });
+});
+
+/**
+ * POST /auth/resend-verification
+ */
+const resendVerification = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({
+      success: false,
+      message: 'Email is required',
+    });
+  }
+
+  const user = await User.findOne({ email: email.toLowerCase().trim() });
+
+  // Always return a generic success to avoid email enumeration
+  const genericResponse = {
+    success: true,
+    message:
+      'If that email is registered and unverified, a verification link has been sent. Please check your spam folder as well.',
+  };
+
+  if (!user || user.isVerified) {
+    return res.status(200).json(genericResponse);
+  }
+
+  const verificationToken = generateTemporaryToken(
+    { userId: user._id.toString(), email: user.email },
+    'email_verification'
+  );
+
+  try {
+    await sendVerificationEmail(user.email, verificationToken, user.username);
+  } catch (emailError) {
+    console.error('Resend verification email failed:', emailError.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to send verification email. Please try again later.',
+    });
+  }
+
+  return res.status(200).json(genericResponse);
+});
+
+/**
+ * POST /auth/forgot-password
+ */
+const forgotPassword = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({
+      success: false,
+      message: 'Email is required',
+    });
+  }
+
+  const user = await User.findOne({ email: email.toLowerCase().trim() });
+
+  const genericResponse = {
+    success: true,
+    message: 'If that email is registered, a password reset link has been sent.',
+  };
+
+  if (!user) {
+    return res.status(200).json(genericResponse);
+  }
+
+  const resetToken = generateTemporaryToken(
+    { userId: user._id.toString(), email: user.email },
+    'password_reset'
+  );
+
+  try {
+    await sendPasswordResetEmail(user.email, resetToken, user.username);
+  } catch (emailError) {
+    console.error('Password reset email failed:', emailError.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to send password reset email. Please try again later.',
+    });
+  }
+
+  return res.status(200).json(genericResponse);
+});
+
+/**
+ * POST /auth/reset-password
+ */
+const resetPassword = asyncHandler(async (req, res) => {
+  const { token, password } = req.body;
+
+  if (!token || !password) {
+    return res.status(400).json({
+      success: false,
+      message: 'Token and new password are required',
+    });
+  }
+
+  const passwordError = validatePassword(password);
+  if (passwordError) {
+    return res.status(400).json({ success: false, message: passwordError });
+  }
+
+  let decoded;
+  try {
+    decoded = verifyTemporaryToken(token, 'password_reset');
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid or expired reset token',
+    });
+  }
+
+  const user = await User.findById(decoded.userId).select('+password');
+  if (!user) {
+    return res.status(404).json({
+      success: false,
+      message: 'User not found',
+    });
+  }
+
+  user.password = password;
+  // Invalidate all sessions after a password reset
+  user.refreshTokens = [];
+  await user.save();
+
+  return res.status(200).json({
+    success: true,
+    message: 'Password reset successfully. Please log in with your new password.',
+  });
+});
+
+/**
+ * GET /auth/me — current authenticated user
+ */
+const getMe = asyncHandler(async (req, res) => {
+  return res.status(200).json({
+    success: true,
+    user: req.user.toSafeObject ? req.user.toSafeObject() : req.user,
+  });
+});
+
+/**
+ * POST /auth/image — existing Cloudinary upload
+ */
+const imageUpload = asyncHandler(async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({
+      success: false,
+      message: 'No image was uploaded!',
+    });
+  }
+
+  return res.status(200).json({
+    success: true,
+    message: 'Image uploaded successfully',
+    url: req.file.path,
+  });
+});
+
 module.exports = {
-    registrationController,
-    imageUpload
-}
+  register,
+  login,
+  refreshAccessToken,
+  logout,
+  verifyEmail,
+  resendVerification,
+  forgotPassword,
+  resetPassword,
+  getMe,
+  imageUpload,
+};
