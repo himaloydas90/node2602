@@ -74,6 +74,7 @@ const register = asyncHandler(async (req, res) => {
     phone,
     gender,
     dateOfBirth,
+    role
   } = req.body;
 
   if (!username) {
@@ -109,6 +110,7 @@ const register = asyncHandler(async (req, res) => {
     });
   }
 
+
   const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
   if (existingUser) {
     return res.status(409).json({
@@ -121,6 +123,7 @@ const register = asyncHandler(async (req, res) => {
     username: username.trim(),
     email: email.toLowerCase().trim(),
     password,
+    role,
     ...(profileImage && { profileImage }),
     ...(address && { address }),
     ...(phone && { phone }),
@@ -279,8 +282,7 @@ const logout = asyncHandler(async (req, res) => {
  * GET/POST /auth/verify-email
  */
 const verifyEmail = asyncHandler(async (req, res) => {
-  const token = req.body.token || req.query.token;
-
+  const token = req.body?.token || req.query.token;
   if (!token) {
     return res.status(400).json({
       success: false,

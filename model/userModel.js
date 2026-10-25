@@ -43,6 +43,12 @@ const userSchema = new Schema(
     dateOfBirth: {
       type: Date,
     },
+    role:{
+      type: String,
+      enum: ['admin','employe','user'],
+      default: 'user',
+
+    },
     isVerified: {
       type: Boolean,
       default: false,
@@ -80,6 +86,7 @@ userSchema.methods.toSafeObject = function () {
     phone: this.phone,
     gender: this.gender,
     dateOfBirth: this.dateOfBirth,
+    role: this.role,
     isVerified: this.isVerified,
     createdAt: this.createdAt,
     updatedAt: this.updatedAt,

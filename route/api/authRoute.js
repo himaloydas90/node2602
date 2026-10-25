@@ -3,6 +3,7 @@ const router = express.Router();
 
 const upload = require('../../middalware/fileUploads');
 const { protect } = require('../../middalware/authMiddleware');
+const {limiter} = require('../../middalware/ratelimiter')
 const {
   register,
   login,
@@ -18,7 +19,7 @@ const {
 
 // Public auth routes
 router.post('/register', register);
-router.post('/login', login);
+router.post('/login',limiter, login);
 router.post('/refresh-token', refreshAccessToken);
 router.post('/logout', logout);
 

@@ -109,8 +109,6 @@ const emailTemplate = ({
   const safeRecipient = escapeHtml(recipientEmail);
   const safeReplyTo = escapeHtml(REPLY_TO);
   const safeAppName = escapeHtml(APP_NAME);
-  // Preview text shown next to the subject in the inbox; missing preheaders
-  // make mailbox providers fall back to scraping the HTML body.
   const safePreheader = escapeHtml(preheader || message);
 
   return `
@@ -133,7 +131,7 @@ const emailTemplate = ({
     <tr>
       <td align="center" style="padding:32px 12px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-          style="max-width:560px;background-color:#ffffff;border:1px solid #e5e7eb;border-radius:12px;">
+          style="max-width:560px;background-color:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
 
           <tr>
             <td align="left" style="padding:26px 28px;border-bottom:1px solid #e5e7eb;">
@@ -147,14 +145,21 @@ const emailTemplate = ({
                 ${safeGreeting}
               </p>
 
-              <p style="margin:0 0 22px;font-size:15px;line-height:1.7;color:#374151;">
+              <p style="margin:0 0 24px;font-size:15px;line-height:1.7;color:#374151;">
                 ${safeMessage}
               </p>
 
-              <p style="margin:0 0 22px;font-size:15px;line-height:1.7;">
-                <a href="${safeUrl}" target="_blank"
-                  style="color:#1d4ed8;font-weight:bold;text-decoration:underline;">${safeButtonText}</a>
-              </p>
+              <!-- প্রফেশনাল ভেরিফিকেশন বাটন -->
+              <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="margin:0 0 24px;">
+                <tr>
+                  <td align="center" bgcolor="#1d4ed8" style="border-radius:6px;">
+                    <a href="${safeUrl}" target="_blank"
+                      style="font-size:15px;font-family:Arial, sans-serif;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:6px;border:1px solid #1d4ed8;display:inline-block;font-weight:bold;">
+                      ${safeButtonText}
+                    </a>
+                  </td>
+                </tr>
+              </table>
 
               <p style="margin:0 0 6px;font-size:13px;line-height:1.7;color:#6b7280;">
                 Or copy this address into your browser:
@@ -190,10 +195,9 @@ const emailTemplate = ({
 </body>
 </html>`;
 };
-
 // Email verification
 const sendVerificationEmail = async (email, token, username = '') => {
-  const verifyUrl = getClientUrl('/verify-email', token);
+  const verifyUrl = getClientUrl('/backend-api/v1/auth/verify-email', token);
 
   const greeting = username ? `Hello ${username},` : 'Hello,';
 

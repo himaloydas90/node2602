@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../../middalware/authMiddleware');
+const { getAllUserController } = require('../../controller/dashbordController');
 
 router.get('/admin', protect, (req, res) => {
   res.status(200).json({
@@ -13,5 +14,7 @@ router.get('/admin', protect, (req, res) => {
     },
   });
 });
+router.get('/getAllUser', protect,getAllUserController);
+
 
 module.exports = router;
