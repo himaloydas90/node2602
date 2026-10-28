@@ -123,12 +123,12 @@ const register = asyncHandler(async (req, res) => {
     username: username.trim(),
     email: email.toLowerCase().trim(),
     password,
-    role,
-    ...(profileImage && { profileImage }),
-    ...(address && { address }),
-    ...(phone && { phone }),
-    ...(gender && { gender }),
-    ...(dateOfBirth && { dateOfBirth }),
+    profileImage,
+    address,
+    phone,
+    gender,
+    dateOfBirth,
+    role
   });
 
   const verificationToken = generateTemporaryToken(
@@ -186,8 +186,19 @@ const login = asyncHandler(async (req, res) => {
   return res.status(200).json({
     success: true,
     message: 'Login successful',
-    user: user.toSafeObject(),
-    ...tokens,
+    user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        profilePicture: user.profilePicture,
+        address: user.address,
+        phone: user.phone,
+        gender: user.gender,
+        dob: user.dob,
+        role: user.role,
+        isEmailVerified: user.isEmailVerified,
+      },
+      tokens
   });
 });
 

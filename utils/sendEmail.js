@@ -4,9 +4,12 @@ const nodemailer = require('nodemailer');
 const APP_NAME = process.env.APP_NAME || 'ERP System';
 const FROM_NAME = process.env.SMTP_FROM_NAME || APP_NAME;
 const REPLY_TO = process.env.SMTP_REPLY_TO || process.env.SMTP_NAME;
+const smtpPort = Number(process.env.SMTP_PORT || 587)
 
 const transporter = nodemailer.createTransport({
-  service: process.env.SMTP_SERVICE,
+  host: process.env.SMTP_HOST || "smtp.gmail.com",
+  port: smtpPort,
+  secure: smtpPort === 465,
   auth: {
     user: process.env.SMTP_NAME,
     pass: process.env.SMTP_PASSWORD,
